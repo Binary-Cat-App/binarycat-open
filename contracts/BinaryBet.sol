@@ -61,6 +61,7 @@ contract BinaryBet is Ownable {
     uint256 public accumulatedFees;
 
     //User variables
+    //TODO: Create struct with user data.
     mapping(address => mapping(uint256 => Pool)) public userStake;
     mapping(address => uint256[]) public userBets;
     mapping(address => mapping(uint256 => bool)) public userBetted;
@@ -102,28 +103,6 @@ contract BinaryBet is Ownable {
         REWARD_PER_WINDOW = reward * 1e18;
     }
 
-    //=============GOVERNANCE FUNCTIONS=============================================
-    function changeWindowSize(uint256 windowSize) public onlyOwner {
-        require(windowSize > 0, "window size should positive");
-        uint256 currentWindow = getWindowNumber(
-            block.number,
-            windowDuration,
-            firstBlock,
-            windowOffset,
-            firstWindow
-        );
-        firstBlock = getWindowStartingBlock(
-            currentWindow + 1,
-            windowDuration,
-            firstBlock,
-            windowOffset
-        );
-        windowOffset = currentWindow;
-        firstWindow = currentWindow;
-        windowDuration = windowSize;
-    }
-
-    //==============================================================================
     function placeBet(uint8 side) external payable {
         require(msg.value > 0, "Only strictly positive values");
         updatePrice();
@@ -451,5 +430,25 @@ contract BinaryBet is Ownable {
 
     function betListLen(address user) public view returns (uint256) {
         return userBets[user].length;
+    }
+
+    function changeWindowSize(uint256 windowSize) public onlyOwner {
+        require(windowSize > 0, "window size should positive");
+        uint256 currentWindow = getWindowNumber(
+            block.number,
+            windowDuration,
+            firstBlock,
+            windowOffset,
+            firstWindow
+        );
+        firstBlock = getWindowStartingBlock(
+            currentWindow + 1,
+            windowDuration,
+            firstBlock,
+            windowOffset
+        );
+        windowOffset = currentWindow;
+        firstWindow = currentWindow;
+        windowDuration = windowSize;
     }
 }
