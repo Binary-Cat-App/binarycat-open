@@ -1,0 +1,23 @@
+node_modules
+
+#Removing Lock file for Heroku
+package-lock.json
+
+./artifacts
+bin
+cache
+coverage*
+**/solcInputs
+deployments/localhost
+dist
+node_modules
+src/types
+.mnemonic
+.vscode
+.node*
+*.bin
+cache
+*.swp
+*.swo
+.DS_Store
+.env
