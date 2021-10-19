@@ -7,7 +7,9 @@
     "heroku-prebuild": "bash heroku-prebuild.sh",
     "start": "node --optimize_for_size --max_old_space_size=460 --gc_interval=100 backend/index.js",
     "start_local": "node -r dotenv/config backend/index.js",
-    "heroku-postbuild": "cd webapp && npm install && npm run build"
+    "heroku-postbuild": "cd webapp && npm install && npm run build",
+    "solhint": "./node_modules/.bin/solhint -f table contracts/*.sol",
+    "prettier:solidity": "./node_modules/.bin/prettier --write contracts/*.sol"
   },
   "name": "hardhat-project",
   "devDependencies": {
@@ -22,6 +24,10 @@
     "hardhat": "^2.5.0",
     "hardhat-deploy": "^0.8.11",
     "hardhat-gas-reporter": "^1.0.4",
+    "prettier": "^2.4.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.18",
+    "solhint": "^3.3.6",
+    "solhint-plugin-prettier": "0.0.5",
     "solidity-coverage": "^0.7.17"
   },
   "dependencies": {

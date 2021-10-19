@@ -21,9 +21,21 @@ import "./BinaryStaking.sol";
 
 contract BinaryBet is Ownable {
     //Structs and enums
-    enum BetSide {down, up} 
-    enum BetResult {down, up, tie}
-    enum WindowStatus {notFinalized, waitingPrice, failedUpdate, finalized}
+    enum BetSide {
+        down,
+        up
+    }
+    enum BetResult {
+        down,
+        up,
+        tie
+    }
+    enum WindowStatus {
+        notFinalized,
+        waitingPrice,
+        failedUpdate,
+        finalized
+    }
 
     struct Pool {
         uint64 downValue;
@@ -31,36 +43,51 @@ contract BinaryBet is Ownable {
     }
 
     //Betting parameters
-    AggregatorV3Interface internal priceFeed;  
-    uint public immutable REWARD_PER_WINDOW;
-    uint public fee;
-    uint public windowDuration; //in blocks
-    uint public firstBlock;
-    BinaryStaking staking; 
+    AggregatorV3Interface internal priceFeed;
+    uint256 public immutable REWARD_PER_WINDOW;
+    uint256 public fee;
+    uint256 public windowDuration; //in blocks
+    uint256 public firstBlock;
+    BinaryStaking staking;
     address payable stakingAddress;
 
     BinToken token;
 
     //Window management
-    mapping (uint => Pool) public pools; //windowNumber => Pool
-    mapping(uint => uint) public  windowPrice; //first price collection at the window.
-    uint public firstWindow = 1; //Any bet before first block of betting is directed to the first window.
-    uint public windowOffset; //used make window continuous and monotonically increasing when window duration and first block changes.
-    uint public accumulatedFees;
+    mapping(uint256 => Pool) public pools; //windowNumber => Pool
+    mapping(uint256 => uint256) public windowPrice; //first price collection at the window.
+    uint256 public firstWindow = 1; //Any bet before first block of betting is directed to the first window.
+    uint256 public windowOffset; //used make window continuous and monotonically increasing when window duration and first block changes.
+    uint256 public accumulatedFees;
 
     //User variables
-    mapping (address => mapping(uint => Pool)) public  userStake;
-    mapping (address => uint[]) public userBets;
-    mapping (address => mapping(uint => bool)) userBetted;
-
+    mapping(address => mapping(uint256 => Pool)) public userStake;
+    mapping(address => uint256[]) public userBets;
+    mapping(address => mapping(uint256 => bool)) public userBetted;
 
     //EVENTS
-    event newBet(address indexed user, uint indexed windowNumber, uint value, uint8 side);
-    event betSettled(uint indexed windowNumber, address indexed user, uint gain);
-    event priceUpdated(uint indexed windowNumber, uint256 price);
+    event NewBet(
+        address indexed user,
+        uint256 indexed windowNumber,
+        uint256 value,
+        uint8 side
+    );
+    event BetSettled(
+        uint256 indexed windowNumber,
+        address indexed user,
+        uint256 gain
+    );
+    event PriceUpdated(uint256 indexed windowNumber, uint256 price);
 
-    constructor(uint _windowDuration, uint _fee, address aggregator, address stakingContract, address tokenContract, uint reward) {
-        require(_fee <= 100);
+    constructor(
+        uint256 _windowDuration,
+        uint256 _fee,
+        address aggregator,
+        address stakingContract,
+        address tokenContract,
+        uint256 reward
+    ) {
+        require(_fee <= 100, "Fee should be less than 100");
         priceFeed = AggregatorV3Interface(aggregator);
         firstBlock = block.number;
         windowDuration = _windowDuration;
@@ -70,93 +97,151 @@ contract BinaryBet is Ownable {
 
         stakingAddress = payable(stakingContract);
         staking = BinaryStaking(stakingAddress);
-        token = BinToken(tokenContract); 
+        token = BinToken(tokenContract);
 
-        REWARD_PER_WINDOW = reward*1e18;
+        REWARD_PER_WINDOW = reward * 1e18;
     }
-//=============GOVERNANCE FUNCTIONS=============================================
-    function changeWindowSize(uint windowSize) onlyOwner public {
-        require(windowSize > 0, "window size should be strictly positive");
-        uint currentWindow = getWindowNumber(block.number, windowDuration, firstBlock, windowOffset, firstWindow);
-        firstBlock = getWindowStartingBlock(currentWindow + 1, windowDuration, firstBlock, windowOffset);
+
+    //=============GOVERNANCE FUNCTIONS=============================================
+    function changeWindowSize(uint256 windowSize) public onlyOwner {
+        require(windowSize > 0, "window size should positive");
+        uint256 currentWindow = getWindowNumber(
+            block.number,
+            windowDuration,
+            firstBlock,
+            windowOffset,
+            firstWindow
+        );
+        firstBlock = getWindowStartingBlock(
+            currentWindow + 1,
+            windowDuration,
+            firstBlock,
+            windowOffset
+        );
         windowOffset = currentWindow;
         firstWindow = currentWindow;
         windowDuration = windowSize;
     }
-//==============================================================================
-    function placeBet (uint8 side) payable external {
+
+    //==============================================================================
+    function placeBet(uint8 side) external payable {
         require(msg.value > 0, "Only strictly positive values");
         updatePrice();
         updateBalance(msg.sender);
 
-        uint betFee = computeFee(msg.value, fee); 
+        uint256 betFee = computeFee(msg.value, fee);
         accumulatedFees = accumulatedFees + betFee;
         uint64 value = uint64(msg.value - betFee);
 
-        uint windowNumber = getWindowNumber(block.number, windowDuration, firstBlock, windowOffset, firstWindow);
-        if(!userBetted[msg.sender][windowNumber]) {
+        uint256 windowNumber = getWindowNumber(
+            block.number,
+            windowDuration,
+            firstBlock,
+            windowOffset,
+            firstWindow
+        );
+        if (!userBetted[msg.sender][windowNumber]) {
             //only adds the bet to the list if it is the first time the user bets at the window
             userBets[msg.sender].push(windowNumber);
             userBetted[msg.sender][windowNumber] = true;
         }
-        
+
         //Update the pool for the window.
         Pool memory oldPool = pools[windowNumber];
-        (uint64 newDown, uint64 newUp) = updatePool(oldPool.downValue, oldPool.upValue, side, value);
+        (uint64 newDown, uint64 newUp) = updatePool(
+            oldPool.downValue,
+            oldPool.upValue,
+            side,
+            value
+        );
         pools[windowNumber] = Pool(newDown, newUp);
 
         //Update the user stake for the window.
         Pool memory oldStake = userStake[msg.sender][windowNumber];
-        (newDown, newUp) = updatePool(oldStake.downValue, oldStake.upValue, side, value);
+        (newDown, newUp) = updatePool(
+            oldStake.downValue,
+            oldStake.upValue,
+            side,
+            value
+        );
         userStake[msg.sender][windowNumber] = Pool(newDown, newUp);
 
-        emit newBet(msg.sender, windowNumber, value, side);
+        emit NewBet(msg.sender, windowNumber, value, side);
     }
 
     function updateBalance(address user) public {
-        uint[] storage userWindowsList = userBets[user];
-        if(userWindowsList.length == 0) {
+        uint256[] storage userWindowsList = userBets[user];
+        if (userWindowsList.length == 0) {
             //No bets to settle
             return;
         }
 
-        uint totalGain = 0;
-        for(uint i = userWindowsList.length; i > 0; i--) {
+        uint256 totalGain = 0;
+        for (uint256 i = userWindowsList.length; i > 0; i--) {
             //Maximum number of itens in list is 2, when the user bets on 2 subsequent windows and the first window is not yet settled.
-          
-            uint window = userWindowsList[i-1];
-            uint currentWindow = getWindowNumber(block.number, windowDuration, firstBlock, windowOffset, firstWindow);
-            (uint256 referencePrice, uint256 settlementPrice) = getWindowBetPrices(window);
-            
-            WindowStatus status = windowStatus(window, currentWindow, referencePrice, settlementPrice);
-            if (status == WindowStatus.notFinalized || status == WindowStatus.waitingPrice) {
+
+            uint256 window = userWindowsList[i - 1];
+            uint256 currentWindow = getWindowNumber(
+                block.number,
+                windowDuration,
+                firstBlock,
+                windowOffset,
+                firstWindow
+            );
+            (
+                uint256 referencePrice,
+                uint256 settlementPrice
+            ) = getWindowBetPrices(window);
+
+            WindowStatus status = windowStatus(
+                window,
+                currentWindow,
+                referencePrice,
+                settlementPrice
+            );
+            if (
+                status == WindowStatus.notFinalized ||
+                status == WindowStatus.waitingPrice
+            ) {
                 continue;
             }
 
             uint8 result;
             if (status == WindowStatus.finalized) {
-               result = betResult(referencePrice, settlementPrice);
-            }
-            else if (status == WindowStatus.failedUpdate) {
-               result = 2;
+                result = betResult(referencePrice, settlementPrice);
+            } else if (status == WindowStatus.failedUpdate) {
+                result = 2;
             }
 
             //Remove window from list of unsettled bets.
-            userWindowsList[i-1] = userWindowsList[userWindowsList.length -1];
+            userWindowsList[i - 1] = userWindowsList[
+                userWindowsList.length - 1
+            ];
             userWindowsList.pop();
 
             Pool memory stake = userStake[user][window];
             Pool memory pool = pools[window];
-            (uint windowGain, uint fees) = settleBet(stake.upValue, stake.downValue, pool.upValue, pool.downValue, result);
+            (uint256 windowGain, uint256 fees) = settleBet(
+                stake.upValue,
+                stake.downValue,
+                pool.upValue,
+                pool.downValue,
+                result
+            );
 
             totalGain = totalGain + windowGain;
             accumulatedFees = accumulatedFees + fees;
-            
+
             //KITTY token rewards
-            uint reward = calculateTokenReward(stake.upValue, stake.downValue, pool.upValue, pool.downValue);
+            uint256 reward = calculateTokenReward(
+                stake.upValue,
+                stake.downValue,
+                pool.upValue,
+                pool.downValue
+            );
             transferRewards(user, reward);
             transferFees();
-            emit betSettled(window, user, windowGain);
+            emit BetSettled(window, user, windowGain);
         }
 
         if (totalGain >= 0) {
@@ -164,154 +249,207 @@ contract BinaryBet is Ownable {
         }
     }
 
-    function windowStatus(uint window, uint currentWindow, uint initialPrice, uint finalPrice) public pure returns(WindowStatus status) {
+    function windowStatus(
+        uint256 window,
+        uint256 currentWindow,
+        uint256 initialPrice,
+        uint256 finalPrice
+    ) public pure returns (WindowStatus status) {
         if (currentWindow < window + 2) {
             //window not yet settled
             return WindowStatus.notFinalized;
-        }
-        else if (currentWindow < window + 3 && finalPrice == 0) {
+        } else if (currentWindow < window + 3 && finalPrice == 0) {
             //price not updated but update still possible.
             return WindowStatus.waitingPrice;
-        }
-        else if (initialPrice == 0 || finalPrice == 0) {
+        } else if (initialPrice == 0 || finalPrice == 0) {
             return WindowStatus.failedUpdate;
-        }
-        else {
+        } else {
             return WindowStatus.finalized;
         }
-
     }
 
-    function transferRewards(address user, uint amount) internal {
-            if (token.balanceOf(address(this)) >= amount) {
-                token.transfer(user, amount);
-            }
-            else {
-                token.transfer(user, token.balanceOf(address(this)));
-            }
+    function transferRewards(address user, uint256 amount) internal {
+        if (token.balanceOf(address(this)) >= amount) {
+            token.transfer(user, amount);
+        } else {
+            token.transfer(user, token.balanceOf(address(this)));
+        }
     }
 
     function transferFees() internal {
-            if(accumulatedFees > 0) {
-                staking.receiveFunds{value: accumulatedFees}();
-                accumulatedFees = 0;
-            }
+        if (accumulatedFees > 0) {
+            staking.receiveFunds{value: accumulatedFees}();
+            accumulatedFees = 0;
+        }
     }
 
-
-    function settleBet(uint upStake, uint downStake, uint poolUp, uint poolDown, uint8 res) public pure returns (uint gain, uint fees) {
+    function settleBet(
+        uint256 upStake,
+        uint256 downStake,
+        uint256 poolUp,
+        uint256 poolDown,
+        uint8 res
+    ) public pure returns (uint256 gain, uint256 fees) {
         BetResult result = BetResult(res);
-        uint poolTotal = poolUp + poolDown;
+        uint256 poolTotal = poolUp + poolDown;
         if (result == BetResult.up && poolUp != 0) {
             //(upStake/poolUp)*poolTotal
             gain = sharePool(poolTotal, upStake, poolUp);
-        } 
-
-        else if (result == BetResult.down && poolDown != 0) {
+        } else if (result == BetResult.down && poolDown != 0) {
             //(downStake/poolDown)*poolTotal
             gain = sharePool(poolTotal, downStake, poolDown);
-        }
-        else if (result == BetResult.tie) {
+        } else if (result == BetResult.tie) {
             gain = upStake + downStake;
-        }
-        else {
+        } else {
             //If the winning pool is empty, all stake goes to the fees.
             gain = 0;
             fees = upStake + downStake;
         }
     }
 
-   function betResult(uint256 referencePrice, uint256 settlementPrice) public pure returns(uint8){
-        if(settlementPrice < referencePrice) {
+    function betResult(uint256 referencePrice, uint256 settlementPrice)
+        public
+        pure
+        returns (uint8)
+    {
+        if (settlementPrice < referencePrice) {
             return 0;
-        }
-        else if(settlementPrice > referencePrice) {
+        } else if (settlementPrice > referencePrice) {
             return 1;
         }
         return 2;
     }
 
-    function sharePool(uint value, uint shares, uint totalShares) internal pure returns (uint) {
+    function sharePool(
+        uint256 value,
+        uint256 shares,
+        uint256 totalShares
+    ) internal pure returns (uint256) {
         return (shares * value) / totalShares;
     }
 
-    function calculateTokenReward(uint upStake, uint downStake, uint poolUp, uint poolDown) public view returns (uint) {
-        return sharePool(REWARD_PER_WINDOW, upStake + downStake, poolUp + poolDown);
+    function calculateTokenReward(
+        uint256 upStake,
+        uint256 downStake,
+        uint256 poolUp,
+        uint256 poolDown
+    ) public view returns (uint256) {
+        return
+            sharePool(
+                REWARD_PER_WINDOW,
+                upStake + downStake,
+                poolUp + poolDown
+            );
     }
 
-
-    function updatePool(uint64 downValue, uint64 upValue, uint8 side, uint64 value) public pure returns(uint64, uint64){
+    function updatePool(
+        uint64 downValue,
+        uint64 upValue,
+        uint8 side,
+        uint64 value
+    ) public pure returns (uint64, uint64) {
         BetSide betSide = BetSide(side);
         if (betSide == BetSide.down) {
             return (downValue + value, upValue);
-        }
-        else { 
+        } else {
             return (downValue, upValue + value);
         }
     }
 
-    function getWindowNumber (uint currentBlock, uint _windowDuration, uint _firstBlock, uint _windowOffset, uint _firstWindow) public pure returns (uint windowNumber) {
+    function getWindowNumber(
+        uint256 currentBlock,
+        uint256 _windowDuration,
+        uint256 _firstBlock,
+        uint256 _windowOffset,
+        uint256 _firstWindow
+    ) public pure returns (uint256 windowNumber) {
         if (currentBlock < _firstBlock) {
             windowNumber = _firstWindow;
+        } else {
+            //n = floor((block - first_block)/window_size  + 1)
+            windowNumber =
+                ((currentBlock - _firstBlock) / _windowDuration) +
+                _windowOffset +
+                1; //integer division => floor
         }
-        else {
-        //n = floor((block - first_block)/window_size  + 1)
-            windowNumber = ((currentBlock - _firstBlock) / _windowDuration) + _windowOffset + 1; //integer division => floor    
-        }
-
     }
 
-    function getWindowStartingBlock (uint windowNumber, uint _windowDuration, uint _firstBlock, uint _windowOffset) public pure returns (uint startingBlock) {
+    function getWindowStartingBlock(
+        uint256 windowNumber,
+        uint256 _windowDuration,
+        uint256 _firstBlock,
+        uint256 _windowOffset
+    ) public pure returns (uint256 startingBlock) {
         //firstBlock + (n-1 - (offset + 1))*window_size
-        startingBlock =  _firstBlock + (windowNumber - 1 - _windowOffset)*_windowDuration;
+        startingBlock =
+            _firstBlock +
+            (windowNumber - 1 - _windowOffset) *
+            _windowDuration;
     }
 
-    function computeFee(uint value, uint _fee) public pure returns (uint betFee) {
+    function computeFee(uint256 value, uint256 _fee)
+        public
+        pure
+        returns (uint256 betFee)
+    {
         betFee = (value * _fee) / 100;
-
     }
-
 
     function updatePrice() public {
-        uint window = getWindowNumber(block.number, windowDuration, firstBlock, windowOffset, firstWindow);
-        if(windowPrice[window] == 0) {
+        uint256 window = getWindowNumber(
+            block.number,
+            windowDuration,
+            firstBlock,
+            windowOffset,
+            firstWindow
+        );
+        if (windowPrice[window] == 0) {
             windowPrice[window] = priceOracle();
-            emit priceUpdated(window, windowPrice[window]);
+            emit PriceUpdated(window, windowPrice[window]);
         }
     }
 
-    function priceOracle() internal view returns (uint){
-        (
-             , 
-            int price,
-             ,
-             ,
-             
-        ) = priceFeed.latestRoundData();
-        return  uint(price);
+    function priceOracle() internal view returns (uint256) {
+        (, int256 price, , , ) = priceFeed.latestRoundData();
+        return uint256(price);
     }
 
     //Getters
-    function getPoolValues(uint windowNumber) public view returns (uint, uint) {
+    function getPoolValues(uint256 windowNumber)
+        public
+        view
+        returns (uint256, uint256)
+    {
         Pool memory pool = pools[windowNumber];
         return (pool.downValue, pool.upValue);
     }
 
-    function getUserStake(uint windowNumber, address user) public view returns (uint, uint) {
-        Pool  memory stake  = userStake[user][windowNumber];
+    function getUserStake(uint256 windowNumber, address user)
+        public
+        view
+        returns (uint256, uint256)
+    {
+        Pool memory stake = userStake[user][windowNumber];
         return (stake.downValue, stake.upValue);
     }
 
-
-    function getWindowBetPrices(uint window) public view returns(uint256, uint256) {
-        return (windowPrice[window+1], windowPrice[window+2]);
+    function getWindowBetPrices(uint256 window)
+        public
+        view
+        returns (uint256, uint256)
+    {
+        return (windowPrice[window + 1], windowPrice[window + 2]);
     }
 
-    function getUserBetList(address user, uint index) public view returns (uint) {
-         return userBets[user][index];
+    function getUserBetList(address user, uint256 index)
+        public
+        view
+        returns (uint256)
+    {
+        return userBets[user][index];
     }
 
-    function betListLen(address user) public view returns (uint) {
+    function betListLen(address user) public view returns (uint256) {
         return userBets[user].length;
     }
 }

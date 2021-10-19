@@ -20,9 +20,9 @@ contract Manager is Ownable {
     mapping(address => bool) public usedAddress;
     BinaryBet[] public assetContracts;
 
-    event NewAsset (string assetId, address contractAddress);
+    event NewAsset(string assetId, address contractAddress);
 
-    function assetCount() public view returns (uint) {
+    function assetCount() public view returns (uint256) {
         return assetContracts.length;
     }
 
@@ -30,7 +30,10 @@ contract Manager is Ownable {
         return usedId[keccak256(bytes(asset))];
     }
 
-    function addAsset(string calldata asset, address contractAddress) external onlyOwner {
+    function addAsset(string calldata asset, address contractAddress)
+        external
+        onlyOwner
+    {
         bytes32 id = keccak256(bytes(asset));
         require(!usedId[id], "Asset already exists");
         require(!usedAddress[contractAddress], "Address already used");
@@ -42,15 +45,14 @@ contract Manager is Ownable {
     }
 
     function updatePrice() external {
-        for (uint i = 0; i < assetContracts.length; i++) {
+        for (uint256 i = 0; i < assetContracts.length; i++) {
             assetContracts[i].updatePrice();
         }
     }
 
     function claim() external {
-        for (uint i = 0; i < assetContracts.length; i++) {
+        for (uint256 i = 0; i < assetContracts.length; i++) {
             assetContracts[i].updateBalance(msg.sender);
         }
     }
-
 }

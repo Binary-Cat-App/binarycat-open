@@ -17,20 +17,20 @@ import "./BinToken.sol";
 contract BinaryStaking {
     IERC20 public binToken;
 
-    uint internal constant PRECISION_CONSTANT = 1e27;
+    uint256 internal constant PRECISION_CONSTANT = 1e27;
     address payable owner;
     struct StakingAccount {
-        uint stakedBin; 
-        uint valueWhenLastReleased; //Global accumulated value of new_rewards/total_staked when user last got rewards
+        uint256 stakedBin;
+        uint256 valueWhenLastReleased; //Global accumulated value of new_rewards/total_staked when user last got rewards
     }
 
     mapping(address => StakingAccount) public stakingBalance;
-    uint public accumulatedRewards; //(per staked token) 
+    uint256 public accumulatedRewards; //(per staked token)
 
-    event Staked(address indexed user, uint amount);
-    event Unstaked(address indexed user, uint amount);
-    event Release(address indexed user, uint amount);
-    event Reward(uint amount);
+    event Staked(address indexed user, uint256 amount);
+    event Unstaked(address indexed user, uint256 amount);
+    event Release(address indexed user, uint256 amount);
+    event Reward(uint256 amount);
 
     constructor(address token) {
         owner = payable(msg.sender);
@@ -38,54 +38,63 @@ contract BinaryStaking {
     }
 
     function receiveFunds() public payable {
-        uint value = msg.value;
+        uint256 value = msg.value;
         if (binToken.balanceOf(address(this)) != 0) {
-            accumulatedRewards = accumulatedRewards + (value*PRECISION_CONSTANT) / binToken.balanceOf(address(this));
-        }
-        else {
+            accumulatedRewards =
+                accumulatedRewards +
+                (value * PRECISION_CONSTANT) /
+                binToken.balanceOf(address(this));
+        } else {
             owner.transfer(value);
         }
         emit Reward(value);
     }
 
-    function stake(uint amount) external{
+    function stake(uint256 amount) external {
         require(amount > 0, "Amount should be greater than 0");
         release();
         require(binToken.transferFrom(msg.sender, address(this), amount));
-        stakingBalance[msg.sender].stakedBin = stakingBalance[msg.sender].stakedBin + amount;
+        stakingBalance[msg.sender].stakedBin =
+            stakingBalance[msg.sender].stakedBin +
+            amount;
 
         emit Staked(msg.sender, amount);
     }
 
-    function unstake(uint amount) external {
+    function unstake(uint256 amount) external {
         require(amount > 0, "Amount should be greater than 0");
-        require(amount <= stakingBalance[msg.sender].stakedBin, "Cannot unstake more than balance");
+        require(
+            amount <= stakingBalance[msg.sender].stakedBin,
+            "Cannot unstake more than balance"
+        );
 
         release();
-        stakingBalance[msg.sender].stakedBin = stakingBalance[msg.sender].stakedBin - amount;
+        stakingBalance[msg.sender].stakedBin =
+            stakingBalance[msg.sender].stakedBin -
+            amount;
 
         binToken.transfer(msg.sender, amount);
         emit Unstaked(msg.sender, amount);
     }
 
-    function release () public {
-        if (accumulatedRewards == 0){
+    function release() public {
+        if (accumulatedRewards == 0) {
             return;
         }
-        uint amount = ownedDividends(msg.sender);
-        stakingBalance[msg.sender].valueWhenLastReleased = accumulatedRewards;                                                        
-        
+        uint256 amount = ownedDividends(msg.sender);
+        stakingBalance[msg.sender].valueWhenLastReleased = accumulatedRewards;
+
         if (amount > 0) {
             payable(msg.sender).transfer(amount);
             emit Release(msg.sender, amount);
         }
     }
 
-    function ownedDividends(address user) public view returns(uint) {
+    function ownedDividends(address user) public view returns (uint256) {
         StakingAccount memory balance = stakingBalance[user];
-        return  (balance.stakedBin * (accumulatedRewards - balance.valueWhenLastReleased)) / PRECISION_CONSTANT ;
+        return
+            (balance.stakedBin *
+                (accumulatedRewards - balance.valueWhenLastReleased)) /
+            PRECISION_CONSTANT;
     }
-
-
 }
-

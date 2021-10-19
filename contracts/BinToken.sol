@@ -13,22 +13,21 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
 //import "@openzeppelin/contracts/math/SafeMath.sol";
 
-contract BinToken is ERC20{
+contract BinToken is ERC20 {
     //using SafeMath for uint256;
 
     string public constant NAME = "KITTY";
     string public constant SYMBOL = "KITTY";
     uint8 public constant DECIMALS = 18;
-    uint256 public constant INITIAL_SUPPLY = 100000000 * (10 ** uint256(DECIMALS));
+    uint256 public constant INITIAL_SUPPLY =
+        100000000 * (10**uint256(DECIMALS));
 
+    mapping(address => mapping(address => uint256)) allowed;
 
-    mapping (address => mapping(address => uint)) allowed;
-
-    constructor()
-        ERC20(NAME, SYMBOL) 
-    {
+    constructor() ERC20(NAME, SYMBOL) {
         _mint(msg.sender, INITIAL_SUPPLY);
     }
 }
